@@ -7,6 +7,7 @@ var fs = require("fs");
 var child_process = require("child_process");
 var url = require("url");
 var path = require("path");
+var child_process = require("child_process");
 
 var inputFile = process.argv[2];
 var outputFile = process.argv[3];
@@ -108,12 +109,18 @@ function monitor(){
         var newConf = inputTemplate({hostsMap: hostsMap, ssl: getSSL(hostsMap) });
         if(oldConf != newConf){
           fs.writeFileSync(outputFile, newConf);
-          console.log("VHosts Updated " + JSON.stringify(hostsMap).trim() );
+          console.log("vhosts Updated " + JSON.stringify(hostsMap).trim() );
           oldConf = newConf;
-          if(execOnUpdate) child_process.execSync(execOnUpdate);
+          if(execOnUpdate){
+            child_process.exec(execOnUpdate, function(err, sout, serr){
+              if(sout) console.log(sout.trim());
+              if(serr) console.error(serr.trim());
+            });
+          }
         }
       }
     })
+    
     .catch( err => console.error("Unable to generate configuration. " + err) );
 }
 
