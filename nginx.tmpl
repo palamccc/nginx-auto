@@ -1,0 +1,38 @@
+server {
+  listen [::]:80 default_server;
+  listen 80 default_server;
+  return 404;
+}
+<% _.forEach(hostsMap, function(dests, vhost){ %>
+<% var id = vhost.replace(/\./g,"_") %>
+# server <%= vhost %>
+upstream <%= id %> {
+  <% _.forEach(dests, function(dest){ %>
+  server <%=dest%>;
+  <%})%>
+}
+server {
+  server_name <%= vhost %>;
+  listen      [::]:80;
+  listen      80;
+  <% if(ssl[vhost]){%>
+  listen 443 ssl spdy;
+  ssl_protocols TLSv1 TLSv1.1 TLSv1.2;
+  ssl_certificate <%=ssl[vhost].crt%>;
+  ssl_certificate_key <%=ssl[vhost].key%>;
+  <%}%>
+  client_max_body_size 10m;
+  server_tokens off;
+  location / {
+    proxy_pass http://<%=id%>;
+    proxy_buffering off;
+    proxy_http_version 1.1;
+    proxy_set_header Upgrade $http_upgrade;
+    proxy_set_header Connection "upgrade";
+    proxy_set_header Host $http_host;
+    proxy_set_header X-Forwarded-Proto $scheme;
+    proxy_set_header X-Forwarded-For $remote_addr;
+    proxy_set_header X-Forwarded-Port $server_port;
+  }
+}
+<% }) %>
