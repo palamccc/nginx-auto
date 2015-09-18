@@ -4,14 +4,15 @@ var Promise = require("bluebird");
 var _ = require("lodash");
 var http = require("http");
 var fs = require("fs");
-var child_process = require("child_process");
+var spawn = require("child_process").spawn;
+var exec = require("child_process").exec;
 var url = require("url");
 var path = require("path");
-var child_process = require("child_process");
 
-var inputFile = process.argv[2];
-var outputFile = process.argv[3];
-var execOnUpdate = process.argv[4];
+var nginx = spawn("nginx", ["-g", "daemon off;"]);
+
+var inputFile = "nginx.tmpl";
+var outputFile = "/etc/nginx/conf.d/default.conf";
 
 var inputTemplate = _.template(fs.readFileSync(inputFile));
 
@@ -107,12 +108,13 @@ function monitor(){
         .value();
       if( Object.keys(hostsMap).length || oldConf ){
         var newConf = inputTemplate({hostsMap: hostsMap, ssl: getSSL(hostsMap) });
-        if(oldConf != newConf){
+        if(oldConf != newConf && nginx){
           fs.writeFileSync(outputFile, newConf);
           console.log("vhosts Updated " + JSON.stringify(hostsMap).trim() );
           oldConf = newConf;
-          if(execOnUpdate){
-            child_process.exec(execOnUpdate, function(err, sout, serr){
+          if(nginx){
+            reloadCmd = "nginx -t && nginx -s reload";
+            exec(reloadCmd, function(err, sout, serr){
               if(sout) console.log(sout.trim());
               if(serr) console.error(serr.trim());
             });
@@ -120,8 +122,19 @@ function monitor(){
         }
       }
     })
-    
     .catch( err => console.error("Unable to generate configuration. " + err) );
 }
 
-setInterval(monitor, 2000);
+var timer = setInterval(monitor, 2000);
+
+
+function shutdown(){ 
+  console.log("Shutting down monitor, sending SIGTERM to nginx");
+  if(timer) clearInterval(timer);
+  timer = 0;
+  if(nginx) nginx.kill("SIGTERM");
+  nginx = null;
+}
+
+process.on("SIGINT", shutdown);
+process.on("SIGTERM", shutdown);
