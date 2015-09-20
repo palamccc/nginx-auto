@@ -10,6 +10,9 @@ var url = require("url");
 var path = require("path");
 
 var nginx = spawn("nginx", ["-g", "daemon off;"]);
+nginx.stdout.on('data', data => console.log(data));
+nginx.stderr.on('data', data => console.error(data));
+nginx.on('close', code => console.log("nginx exited with code " + code));
 
 var inputFile = "nginx.tmpl";
 var outputFile = "/etc/nginx/conf.d/default.conf";
