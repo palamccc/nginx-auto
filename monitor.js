@@ -65,22 +65,23 @@ function getPr(url) {
   });
 }
 
-var lastActive = {};
 function checkHealth(cinfo){
   var key = cinfo.destIP + ":" + cinfo.destPort;
+  var healthKey = cinfo.vhost + "/" + cinfo.dest;
   return getPr("http://" + cinfo.dest + "/health/check")
     .then( reply => {
-      var healthKey = cinfo.vhost + "/" + cinfo.dest;
       if(reply == "up"){
-        lastActive[healthKey] = Date.now();
+        return healthKey
       }else if(reply == "down"){
-        delete lastActive[healthKey];
-      }else {
+        return null;
+      }else{
         console.error(healthKey + ": unknown reply " + reply.substr(0, 100))
+        return null;
       }
     })
     .catch( err => {
-      console.error(cinfo.vhost + "=>" + cinfo.dest + " down " + err);
+      console.error(healthKey + ": no reply " + err);
+      return null;
     })
 }
 
@@ -96,42 +97,47 @@ function getSSL(hosts){
   return ssl;
 }
 
-var oldConf = null;
+function dt(){ return JSON.stringify(new Date()).substr(12, 12) }
+var FILTER_LENGTH = 3;
+
+var confHistory = [];
+var prevConf = null;
+
 function monitor(){
   listPr()
     .map( inspectPr )
     .map( parse )
     .then( _.filter )
     .map( checkHealth )
-    .then( () => {
-      var fewMomentsAgo = Date.now() - 7000;
-      var hostsMap = _(lastActive)
-        .pairs()
-        .filter( p => p[1] >= fewMomentsAgo )
-        .map( p => p[0] )
+    .then( _.filter )
+    .then( healthKeys => {
+      var hostsMap = _(healthKeys)
         .groupBy( healthKey => healthKey.split(/\//)[0] )
         .mapValues( v => _.map(v, healthKey => healthKey.split(/\//)[1]) )
         .value();
-      if( Object.keys(hostsMap).length || oldConf ){
-        var newConf = inputTemplate({hostsMap: hostsMap, ssl: getSSL(hostsMap) });
-        if(oldConf != newConf && nginx){
-          fs.writeFileSync(outputFile, newConf);
-          console.log("vhosts Updated " + JSON.stringify(hostsMap).trim() );
-          oldConf = newConf;
-          if(nginx){
-            reloadCmd = "nginx -s reload";
-            exec(reloadCmd, function(err, sout, serr){
-              if(sout) console.log(sout.trim());
-              if(serr) console.error(serr.trim());
-            });
-          }
+      var newConf = inputTemplate({hostsMap: hostsMap, ssl: getSSL(hostsMap) });
+      if( newConf != prevConf ) console.log(dt() + " vhosts generated " + JSON.stringify(hostsMap).trim());
+
+      confHistory.push(newConf);
+      confHistory.splice(0, confHistory.length - FILTER_LENGTH);
+
+      if( prevConf != newConf && _.all(confHistory, cf => cf == newConf) ){
+        prevConf = newConf;
+        fs.writeFileSync(outputFile, newConf);
+        console.log(dt() + " vhosts updated " + JSON.stringify(hostsMap).trim() );
+        if(nginx){
+          reloadCmd = "nginx -s reload";
+          exec(reloadCmd, function(err, sout, serr){
+            if(sout) console.log(sout.trim());
+            if(serr) console.error(serr.trim());
+          });
         }
       }
     })
     .catch( err => console.error("Unable to generate configuration. " + err) );
 }
 
-var timer = setInterval(monitor, 2000);
+var timer = setInterval(monitor, 4000);
 
 
 function shutdown(){ 
