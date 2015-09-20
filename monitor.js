@@ -75,6 +75,8 @@ function checkHealth(cinfo){
         lastActive[healthKey] = Date.now();
       }else if(reply == "down"){
         delete lastActive[healthKey];
+      }else {
+        console.error(healthKey + ": unknown reply " + reply.substr(0, 100))
       }
     })
     .catch( err => {
