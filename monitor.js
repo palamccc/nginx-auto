@@ -56,7 +56,7 @@ function getPr(url) {
       var reply = "";  
       proxyRes.on("data", chunk => reply += chunk.toString());
       proxyRes.on("end", () => {
-        if(status == 200) resolve();
+        if(status == 200) resolve(reply);
         else reject("status code " + status + " " + reply.substr(0, 100).replace(/\n/g, " "));
       });
     });
@@ -69,9 +69,13 @@ var lastActive = {};
 function checkHealth(cinfo){
   var key = cinfo.destIP + ":" + cinfo.destPort;
   return getPr("http://" + cinfo.dest + "/health/check")
-    .then( () => {
+    .then( reply => {
       var healthKey = cinfo.vhost + "/" + cinfo.dest;
-      lastActive[healthKey] = Date.now();
+      if(reply == "up"){
+        lastActive[healthKey] = Date.now();
+      }else if(reply == "down"){
+        delete lastActive[healthKey];
+      }
     })
     .catch( err => {
       console.error(cinfo.vhost + "=>" + cinfo.dest + " down " + err);
@@ -113,7 +117,7 @@ function monitor(){
           console.log("vhosts Updated " + JSON.stringify(hostsMap).trim() );
           oldConf = newConf;
           if(nginx){
-            reloadCmd = "nginx -t && nginx -s reload";
+            reloadCmd = "nginx -s reload";
             exec(reloadCmd, function(err, sout, serr){
               if(sout) console.log(sout.trim());
               if(serr) console.error(serr.trim());
